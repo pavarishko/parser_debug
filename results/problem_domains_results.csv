@@ -1,0 +1,14 @@
+domain,expected_count,sitemap_count,matches,missing,recall,status
+5ka.ru,100,0,0,100,0.0,empty_sitemap
+chikiriki.ru,0,0,0,0,0.0,no_data
+585zolotoy.ru,99,0,0,99,0.0,empty_sitemap
+auchan.ru,94,0,0,94,0.0,empty_sitemap
+faberlic.com,100,0,0,100,0.0,empty_sitemap
+detmir.ru,97,0,0,97,0.0,empty_sitemap
+holodilnik.ru,100,179085,94,6,94.0,success
+kazanexpress.ru,0,0,0,0,0.0,no_data
+kolesa-darom.ru,0,0,0,0,0.0,no_data
+leroymerlin.ru,0,0,0,0,0.0,no_data
+magnit.ru,0,0,0,0,0.0,no_data
+metro-cc.ru,0,0,0,0,0.0,no_data
+minicen.ru,100,0,0,100,0.0,empty_sitemap

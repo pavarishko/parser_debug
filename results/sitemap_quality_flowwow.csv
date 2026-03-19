@@ -1,0 +1,2 @@
+domain,expected_count,sitemap_count,matches,missing,recall,status
+flowwow.com,100,3911165,17,83,17.0,success
