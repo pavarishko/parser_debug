@@ -88,49 +88,40 @@ async def get_sitemap_urls(domain: str, cache_dir: str) -> list:
     
     # 1. Try to load from cache
     if os.path.exists(cache_file):
-        print(f"Loading cached sitemap URLs for {domain}...")
         urls = []
         try:
             with open(cache_file, 'r', encoding='utf-8') as f:
                 for line in f:
                     if line.strip():
                         urls.append(json.loads(line))
-            print(f"Loaded {len(urls)} URLs from cache.")
-            return urls
+                    print(f"  Loaded {len(urls)} URLs from cache")
+                    return urls
         except Exception as e:
-            print(f"Error loading cache for {domain}: {e}")
             # If cache is corrupted, re-parse
             pass
 
     # 2. Parse if not cached
-    print(f"Parsing sitemap for {domain}...")
     parser = SitemapParser()
     result = await parser.parse_from_domain(domain)
     if not result.urls:
-        print(f"No URLs found in sitemap for {domain} (status: {result.status})")
         return []
         
     sitemap_urls = [url.loc for url in result.urls if url and url.loc]
-    print(f"Found {len(sitemap_urls)} URLs in sitemap.")
+    print(f"  Parsed {len(sitemap_urls)} URLs")
     
     # 3. Save to cache
     try:
         with open(cache_file, 'w', encoding='utf-8') as f:
             for url in sitemap_urls:
                 f.write(json.dumps(url) + '\n')
-        print(f"Saved URLs to {cache_file}")
     except Exception as e:
-        print(f"Error saving cache for {domain}: {e}")
+        pass
         
     return sitemap_urls
 
 async def test_domain(domain: str, expected_urls: set, cache_dir: str) -> dict:
-    print(f"\nTesting domain: {domain}")
-    print(f"Expected URLs: {len(expected_urls)}")
-    
     # Парсим sitemap даже если нет ожидаемых URL
     # if not expected_urls:
-    #     print(f"Skipping {domain} - no expected URLs found in source file.")
     #     return {
     #         'domain': domain,
     #         'expected_count': 0,
@@ -259,11 +250,9 @@ async def main():
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
 
-    print(f"\nStarting test...")
-    
     # 4. Iterate and test
     for i, domain in enumerate(domains):
-        print(f"\n[{i+1}/{len(domains)}] Processing {domain}...")
+        print(f"[{i+1}/{len(domains)}] {domain}", flush=True)
         
         # Find expected URLs for this domain
         domain_key = domain.lower()
@@ -279,7 +268,6 @@ async def main():
         try:
             result = await test_domain(domain, expected, args.cache_dir)
         except Exception as e:
-            print(f"Error testing {domain}: {e}")
             result = {
                 'domain': domain,
                 'expected_count': len(expected),
