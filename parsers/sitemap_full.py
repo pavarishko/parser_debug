@@ -293,17 +293,19 @@ class SitemapParser:
     ) -> Tuple[List[str], List[SitemapURL]]:
         """Parse sitemap payload into child sitemap links and page URLs."""
         raw = body
-        should_decompress = (
-            body.startswith(b"\x1f\x8b")
-            or sitemap_url.endswith(".gz")
-            or "gzip" in content_encoding
-        )
+        has_gzip_magic = body.startswith(b"\x1f\x8b")
+        has_gzip_encoding = "gzip" in content_encoding
+        has_gzip_suffix = sitemap_url.endswith(".gz")
+        should_decompress = has_gzip_magic or has_gzip_encoding or has_gzip_suffix
         if should_decompress:
             try:
                 raw = gzip.decompress(body)
             except Exception:
-                logger.debug("Failed to decompress gzip sitemap: %s", sitemap_url)
-                return [], []
+                # Some sites return plain XML from *.xml.gz endpoints.
+                # If gzip is only inferred from URL suffix, continue as plain text.
+                if has_gzip_magic or has_gzip_encoding:
+                    logger.debug("Failed to decompress gzip sitemap: %s", sitemap_url)
+                    return [], []
 
         text = raw.decode("utf-8", errors="replace").strip()
         xml_start = text.find("<")

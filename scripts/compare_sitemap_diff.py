@@ -114,8 +114,8 @@ def compare_domains(
     results: Dict[str, Dict[str, float]] = {}
 
     for domain in domains:
-        old_file = old_dir / f"{domain}_urls.jsonl"
-        new_file = new_dir / f"{domain}_urls.jsonl"
+        old_file = _resolve_domain_file(old_dir, domain)
+        new_file = _resolve_domain_file(new_dir, domain)
 
         old_urls = load_urls_from_jsonl(old_file, normalize=normalize)
         new_urls = load_urls_from_jsonl(new_file, normalize=normalize)
@@ -123,6 +123,8 @@ def compare_domains(
         metrics = compute_metrics(old_urls, new_urls)
         metrics["old_exists"] = old_file.exists()
         metrics["new_exists"] = new_file.exists()
+        metrics["old_file"] = str(old_file)
+        metrics["new_file"] = str(new_file)
         results[domain] = metrics
 
         logging.info(
@@ -136,6 +138,34 @@ def compare_domains(
         )
 
     return results
+
+
+def _resolve_domain_file(base_dir: Path, domain: str) -> Path:
+    """Resolve cache filename for domain with tiny compatibility fallbacks."""
+    direct = base_dir / f"{domain}_urls.jsonl"
+    if direct.exists():
+        return direct
+
+    # Some historical runs saved `www.` stripped names inconsistently.
+    if domain.startswith("www."):
+        alt = base_dir / f"{domain[4:]}_urls.jsonl"
+        if alt.exists():
+            return alt
+    else:
+        alt = base_dir / f"www.{domain}_urls.jsonl"
+        if alt.exists():
+            return alt
+
+    return direct
+
+
+def validate_inputs(results_csv: Path, old_dir: Path, new_dir: Path) -> None:
+    if not results_csv.exists():
+        raise FileNotFoundError(f"Results CSV not found: {results_csv}")
+    if not old_dir.exists():
+        raise FileNotFoundError(f"Old cache dir not found: {old_dir}")
+    if not new_dir.exists():
+        raise FileNotFoundError(f"New cache dir not found: {new_dir}")
 
 
 def save_summary_csv(results: Dict[str, Dict[str, float]], output_csv: Path) -> None:
@@ -194,6 +224,8 @@ def main() -> None:
     old_dir = Path(args.old_dir)
     new_dir = Path(args.new_dir)
 
+    validate_inputs(results_csv, old_dir, new_dir)
+
     domains = load_high_recall_domains(results_csv, args.recall_threshold)
     logging.info("Selected %d domains with recall >= %.1f", len(domains), args.recall_threshold)
 
@@ -215,6 +247,20 @@ def main() -> None:
         totals["removed"],
         totals["new"] - totals["old"],
     )
+
+    both_missing = sum(1 for r in comparison.values() if not r["old_exists"] and not r["new_exists"])
+    if both_missing == len(comparison) and comparison:
+        logging.warning(
+            "All compared domains are missing in both directories. "
+            "Check paths and run command in one line or with '\\' line continuations."
+        )
+        sample_domain = next(iter(comparison))
+        logging.warning(
+            "Sample expected files for %s: old=%s new=%s",
+            sample_domain,
+            comparison[sample_domain]["old_file"],
+            comparison[sample_domain]["new_file"],
+        )
 
 
 if __name__ == "__main__":
