@@ -1,7 +1,26 @@
-"""Parsers for robots.txt, sitemaps, and CMS detection."""
-from parsers.robots import RobotsParser
-from parsers.sitemap_full import SitemapParser
-from parsers.sitemap_fast import SitemapFastChecker
-from parsers.cms import CMSDetector
+"""Parsers package with lazy exports.
 
-__all__ = ['RobotsParser', 'SitemapParser', 'SitemapFastChecker', 'CMSDetector']
+Avoid importing heavy optional dependencies at module import time.
+"""
+
+__all__ = ["RobotsParser", "SitemapParser", "SitemapFastChecker", "CMSDetector"]
+
+
+def __getattr__(name):
+    if name == "RobotsParser":
+        from parsers.robots import RobotsParser
+
+        return RobotsParser
+    if name == "SitemapParser":
+        from parsers.sitemap_full import SitemapParser
+
+        return SitemapParser
+    if name == "SitemapFastChecker":
+        from parsers.sitemap_fast import SitemapFastChecker
+
+        return SitemapFastChecker
+    if name == "CMSDetector":
+        from parsers.cms import CMSDetector
+
+        return CMSDetector
+    raise AttributeError(name)
