@@ -36,7 +36,7 @@ async def process_domain_safe(domain: str, expected_urls: set, cache_dir: str, r
             # Write result safely
             async with file_lock:
                 with open(results_file, 'a', newline='', encoding='utf-8') as f:
-                    fieldnames = ['domain', 'expected_count', 'sitemap_count', 'matches', 'missing', 'recall', 'status']
+                    fieldnames = ['domain', 'expected_count', 'sitemap_count', 'matches', 'missing', 'recall', 'precision', 'status']
                     writer = csv.DictWriter(f, fieldnames=fieldnames)
                     writer.writerow(result)
             
@@ -79,7 +79,7 @@ async def main():
     
     # 3. Prepare results file
     os.makedirs(os.path.dirname(results_file), exist_ok=True)
-    fieldnames = ['domain', 'expected_count', 'sitemap_count', 'matches', 'missing', 'recall', 'status']
+    fieldnames = ['domain', 'expected_count', 'sitemap_count', 'matches', 'missing', 'recall', 'precision', 'status']
     
     # Initialize file with header if not exists, and load processed domains
     processed_domains = set()

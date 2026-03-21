@@ -2,7 +2,7 @@ import logging
 import posixpath
 import re
 from typing import Set
-from urllib.parse import parse_qsl, quote, unquote, urlencode, urlparse, urlunparse
+from urllib.parse import parse_qsl, quote, urlencode, urlparse, urlunparse
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +45,7 @@ TRACKING_PARAMS: Set[str] = {
 
 WWW_PREFIXES: Set[str] = {"www", "www1", "www2", "www3", "www4", "m", "mobile"}
 _DEFAULT_PORTS = {"http": "80", "https": "443"}
+_UNRESERVED = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
 
 
 def normalize_url(
@@ -215,13 +216,30 @@ def _normalize_netloc(netloc: str, scheme: str) -> str:
 
 
 def _normalize_path(path: str) -> str:
-    safe = unquote(path)
-    clean = posixpath.normpath(safe)
-    if safe.endswith("/") and not clean.endswith("/"):
+    decoded = _decode_unreserved(path)
+    clean = posixpath.normpath(decoded)
+    if decoded.endswith("/") and not clean.endswith("/"):
         clean += "/"
     if not clean.startswith("/"):
         clean = "/" + clean
     return quote(clean, safe="/-._~%")
+
+
+def _decode_unreserved(path: str) -> str:
+    """Decode only unreserved percent-encoded octets.
+
+    Keep reserved escapes (e.g. %2F) intact to avoid changing URL semantics.
+    """
+
+    def _replace(match):
+        hex_part = match.group(1)
+        try:
+            ch = bytes.fromhex(hex_part).decode("utf-8")
+        except Exception:
+            return match.group(0)
+        return ch if ch in _UNRESERVED else match.group(0).upper()
+
+    return re.sub(r"%([0-9a-fA-F]{2})", _replace, path)
 
 
 def _remove_www_prefix(domain: str) -> str:

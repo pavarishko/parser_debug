@@ -16,6 +16,20 @@ from parsers.sitemap_full import SitemapParser
 from config import HTTP_TIMEOUT
 from utils import normalize_url, urls_match_fuzzy
 
+
+def registrable_domain(host: str) -> str:
+    """Best-effort registrable-domain extraction without extra dependencies."""
+    host = (host or "").lower().strip(".")
+    if not host:
+        return ""
+    parts = host.split('.')
+    if len(parts) <= 2:
+        return host
+    # Common ccTLD patterns (co.uk, com.au, etc.)
+    if parts[-2] in {'co', 'com', 'org', 'net'} and len(parts) >= 3:
+        return '.'.join(parts[-3:])
+    return '.'.join(parts[-2:])
+
 async def load_domains(json_path: str) -> list:
     try:
         with open(json_path, 'r', encoding='utf-8') as f:
@@ -62,9 +76,12 @@ async def load_expected_urls_for_domains(json_path: str, target_domains: set) ->
                         if domain.startswith('www.'):
                             domain = domain[4:]
                         
-                        # Only store if it matches one of our target domains
-                        if domain in normalized_targets:
-                            domain_urls[domain].add(url)
+                        root_domain = registrable_domain(domain)
+
+                        # Only store if it matches one of our target domains or their root domain
+                        if domain in normalized_targets or root_domain in normalized_targets:
+                            key = domain if domain in normalized_targets else root_domain
+                            domain_urls[key].add(url)
                             count += 1
                         
                         if count > 0 and count % 10000 == 0:
@@ -152,6 +169,7 @@ async def test_domain(domain: str, expected_urls: set, cache_dir: str) -> dict:
                 'matches': 0,
                 'missing': len(expected_urls),
                 'recall': 0.0,
+                'precision': 0.0,
                 'status': 'error: sitemap fetch failed'
             }
 
@@ -163,6 +181,7 @@ async def test_domain(domain: str, expected_urls: set, cache_dir: str) -> dict:
                 'matches': 0,
                 'missing': len(expected_urls),
                 'recall': 0.0,
+                'precision': 0.0,
                 'status': 'empty_sitemap'
             }
 
@@ -175,27 +194,35 @@ async def test_domain(domain: str, expected_urls: set, cache_dir: str) -> dict:
                 'matches': 0,
                 'missing': 0,
                 'recall': 0.0,
+                'precision': 0.0,
                 'status': 'no_expected_urls'
             }
 
-        # Normalize sitemap URLs for comparison (remove all query params)
-        sitemap_set = {normalize_url(u, remove_all_query=True) for u in sitemap_urls}
+        # Multi-level normalization for comparison
+        sitemap_set_strict = {normalize_url(u, remove_all_query=False) for u in sitemap_urls}
+        sitemap_set_relaxed = {normalize_url(u, remove_all_query=True) for u in sitemap_urls}
         
         # Optimization: create a set of "fuzzy" sitemap paths (stripped punctuation)
-        sitemap_fuzzy_set = {re.sub(r'[-_]', '', urlparse(u).path) for u in sitemap_set}
+        sitemap_fuzzy_set = {re.sub(r'[-_]', '', urlparse(u).path) for u in sitemap_set_relaxed}
         
         found_and_valid = 0
         not_found = 0
         
         for expected in expected_urls:
+            expected_strict = normalize_url(expected, remove_all_query=False)
             normalized_expected = normalize_url(expected, remove_all_query=True)
             
-            # 1. Exact match (fastest)
-            if normalized_expected in sitemap_set:
+            # 1. Exact strict match
+            if expected_strict in sitemap_set_strict:
+                found_and_valid += 1
+                continue
+
+            # 2. Exact relaxed match
+            if normalized_expected in sitemap_set_relaxed:
                 found_and_valid += 1
                 continue
                 
-            # 2. Fuzzy match (check if stripped path exists)
+            # 3. Fuzzy path match (very relaxed)
             expected_path_fuzzy = re.sub(r'[-_]', '', urlparse(normalized_expected).path)
             if expected_path_fuzzy in sitemap_fuzzy_set:
                 found_and_valid += 1
@@ -204,8 +231,10 @@ async def test_domain(domain: str, expected_urls: set, cache_dir: str) -> dict:
                 
         total_expected = len(expected_urls)
         recall = (found_and_valid / total_expected * 100) if total_expected > 0 else 0
+        precision = (found_and_valid / len(sitemap_urls) * 100) if sitemap_urls else 0
         
         print(f"Recall: {recall:.2f}% ({found_and_valid}/{total_expected})")
+        print(f"Precision: {precision:.2f}% ({found_and_valid}/{len(sitemap_urls)})")
         
         return {
             'domain': domain,
@@ -214,6 +243,7 @@ async def test_domain(domain: str, expected_urls: set, cache_dir: str) -> dict:
             'matches': found_and_valid,
             'missing': not_found,
             'recall': recall,
+            'precision': precision,
             'status': 'success'
         }
         
@@ -226,6 +256,7 @@ async def test_domain(domain: str, expected_urls: set, cache_dir: str) -> dict:
             'matches': 0,
             'missing': len(expected_urls),
             'recall': 0.0,
+            'precision': 0.0,
             'status': f'error: {str(e)}'
         }
 
@@ -251,7 +282,7 @@ async def main():
     
     # 3. Prepare results file
     os.makedirs(os.path.dirname(args.output), exist_ok=True)
-    fieldnames = ['domain', 'expected_count', 'sitemap_count', 'matches', 'missing', 'recall', 'status']
+    fieldnames = ['domain', 'expected_count', 'sitemap_count', 'matches', 'missing', 'recall', 'precision', 'status']
     
     # Write header if file doesn't exist or we are starting fresh
     # Here we overwrite for simplicity of a new run
@@ -287,6 +318,7 @@ async def main():
                 'matches': 0,
                 'missing': len(expected),
                 'recall': 0.0,
+                'precision': 0.0,
                 'status': f'error: {str(e)}'
             }
         

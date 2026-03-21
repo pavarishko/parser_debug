@@ -35,6 +35,7 @@ class _SitemapFetchResult:
     status: int
     body: bytes
     content_type: str
+    content_encoding: str
 
 
 class SitemapParser:
@@ -212,6 +213,7 @@ class SitemapParser:
                     child_sitemaps, page_urls = self._parse_sitemap_document(
                         body=fetch_result.body,
                         content_type=fetch_result.content_type,
+                        content_encoding=fetch_result.content_encoding,
                         sitemap_url=sitemap_url,
                     )
 
@@ -263,7 +265,13 @@ class SitemapParser:
                     if response.status == 200:
                         body = await response.read()
                         content_type = response.headers.get("Content-Type", "").lower()
-                        return _SitemapFetchResult(status=response.status, body=body, content_type=content_type)
+                        content_encoding = response.headers.get("Content-Encoding", "").lower()
+                        return _SitemapFetchResult(
+                            status=response.status,
+                            body=body,
+                            content_type=content_type,
+                            content_encoding=content_encoding,
+                        )
 
                     if 500 <= response.status < 600 and attempt < 2:
                         await asyncio.sleep(0.5 * (2**attempt))
@@ -280,11 +288,17 @@ class SitemapParser:
         self,
         body: bytes,
         content_type: str,
+        content_encoding: str,
         sitemap_url: str,
     ) -> Tuple[List[str], List[SitemapURL]]:
         """Parse sitemap payload into child sitemap links and page URLs."""
         raw = body
-        if body.startswith(b"\x1f\x8b") or sitemap_url.endswith(".gz") or "gzip" in content_type:
+        should_decompress = (
+            body.startswith(b"\x1f\x8b")
+            or sitemap_url.endswith(".gz")
+            or "gzip" in content_encoding
+        )
+        if should_decompress:
             try:
                 raw = gzip.decompress(body)
             except Exception:
@@ -292,6 +306,9 @@ class SitemapParser:
                 return [], []
 
         text = raw.decode("utf-8", errors="replace").strip()
+        xml_start = text.find("<")
+        if xml_start > 0:
+            text = text[xml_start:]
         if not text:
             return [], []
 
@@ -308,7 +325,10 @@ class SitemapParser:
         except ET.ParseError:
             # Fallback parser for invalid but frequent XML where loc tags still exist.
             locs = [m.strip() for m in _XML_LOC_RE.findall(text)]
-            page_urls.extend(SitemapURL(loc=normalize_url(loc)) for loc in locs if loc.startswith(("http://", "https://")))
+            valid_locs = [loc for loc in locs if loc.startswith(("http://", "https://"))]
+            if "<sitemapindex" in text.lower():
+                return self._unique_urls(valid_locs), []
+            page_urls.extend(SitemapURL(loc=normalize_url(loc)) for loc in valid_locs)
             return [], page_urls
 
         tag = self._strip_ns(root.tag)

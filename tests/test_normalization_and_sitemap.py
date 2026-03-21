@@ -30,7 +30,12 @@ class SitemapParserTests(unittest.TestCase):
           <url><loc>https://example.com/a/</loc><lastmod>2026-01-01</lastmod></url>
           <url><loc>https://example.com/b?utm_source=x</loc></url>
         </urlset>"""
-        child, urls = self.parser._parse_sitemap_document(xml, "application/xml", "https://example.com/sitemap.xml")
+        child, urls = self.parser._parse_sitemap_document(
+            xml,
+            "application/xml",
+            "",
+            "https://example.com/sitemap.xml",
+        )
         self.assertEqual(child, [])
         self.assertEqual(len(urls), 2)
         self.assertEqual(urls[0].loc, "https://example.com/a")
@@ -42,7 +47,12 @@ class SitemapParserTests(unittest.TestCase):
           <sitemap><loc>https://example.com/s1.xml</loc></sitemap>
           <sitemap><loc>https://example.com/s2.xml</loc></sitemap>
         </sitemapindex>"""
-        child, urls = self.parser._parse_sitemap_document(xml, "application/xml", "https://example.com/root.xml")
+        child, urls = self.parser._parse_sitemap_document(
+            xml,
+            "application/xml",
+            "",
+            "https://example.com/root.xml",
+        )
         self.assertEqual(len(child), 2)
         self.assertEqual(urls, [])
 
