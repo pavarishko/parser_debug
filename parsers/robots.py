@@ -1,7 +1,12 @@
-"""Robots.txt parser using Protego library."""
-from typing import Optional
+"""robots.txt parsing utilities based on Protego."""
+
+from __future__ import annotations
+
 import logging
+from typing import Optional
+
 from protego import Protego
+
 from models import RobotsAnalysis
 
 
@@ -9,20 +14,10 @@ logger = logging.getLogger(__name__)
 
 
 class RobotsParser:
-    """Parse and analyze robots.txt files using Protego."""
-    
+    """Parse robots.txt and expose simple crawl-access checks."""
+
     def parse(self, content: str, url: str, http_status: Optional[int]) -> RobotsAnalysis:
-        """
-        Parse robots.txt content using Protego library.
-        
-        Args:
-            content: Raw robots.txt content
-            url: URL of the robots.txt file
-            http_status: HTTP status code from fetch
-            
-        Returns:
-            RobotsAnalysis with parsed data and metrics
-        """
+        """Parse robots.txt response into a structured `RobotsAnalysis` object."""
         if http_status != 200 or not content:
             return RobotsAnalysis(
                 url=url,
@@ -31,44 +26,51 @@ class RobotsParser:
                 status=self._status_bucket(http_status),
                 error="empty_content" if http_status == 200 else None,
             )
-        
+
         try:
-            rp = Protego.parse(content)
-        except Exception as e:
-            logger.warning(f"Failed to parse robots.txt for {url}: {type(e).__name__}: {e}")
+            robot_rules = Protego.parse(content)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Failed to parse robots.txt for %s: %s", url, exc)
             return RobotsAnalysis(
                 url=url,
                 http_status=http_status,
                 exists=True,
                 status="error",
-                error=f"parse_error:{type(e).__name__}",
+                error=f"parse_error:{type(exc).__name__}",
             )
-        
-        # Extract sitemaps from Protego
-        sitemaps = list(rp.sitemaps)
-        
-        # Basic metrics from content (simple line counting)
-        lines = content.strip().split('\n')
-        user_agent_count = sum(1 for line in lines if line.strip().lower().startswith('user-agent:'))
-        disallow_count = sum(1 for line in lines if line.strip().lower().startswith('disallow:'))
-        
-        # Check for crawl-delay directive
-        has_crawl_delay = any('crawl-delay:' in line.lower() for line in lines)
-        
+
+        lines = [line.strip() for line in content.splitlines() if line.strip()]
+        user_agent_count = sum(line.lower().startswith("user-agent:") for line in lines)
+        disallow_count = sum(line.lower().startswith("disallow:") for line in lines)
+        has_crawl_delay = any(line.lower().startswith("crawl-delay:") for line in lines)
+
         return RobotsAnalysis(
             url=url,
             http_status=http_status,
             exists=True,
             status="ok",
-            sitemaps=sitemaps,
-            raw_content=content[:10000],  # Store first 10KB for debugging
-            total_rules=user_agent_count + disallow_count,
+            sitemaps=list(robot_rules.sitemaps),
+            raw_content=content[:10_000],
+            total_rules=int(user_agent_count + disallow_count),
             has_crawl_delay=has_crawl_delay,
-            recommended_delay=None,  # Protego doesn't expose this easily
+            recommended_delay=None,
         )
-    
-    def _status_bucket(self, code: Optional[int]) -> str:
-        """Categorize HTTP status code."""
+
+    def is_allowed(self, robots_content: str, target_url: str, user_agent: str = "*") -> Optional[bool]:
+        """Return crawl-allow decision for target URL.
+
+        Returns None when robots.txt cannot be parsed.
+        """
+        if not robots_content:
+            return None
+        try:
+            robot_rules = Protego.parse(robots_content)
+        except Exception:  # noqa: BLE001
+            return None
+        return bool(robot_rules.can_fetch(target_url, user_agent))
+
+    @staticmethod
+    def _status_bucket(code: Optional[int]) -> str:
         if code == 200:
             return "ok"
         if code == 404:
